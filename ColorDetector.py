@@ -2,8 +2,12 @@
 import cv2
 import numpy as np
 import os
+import colorsys # used for converting between HSV and BGR
 
 lookForColor = np.array((0, 0, 0), dtype=np.uint8) # The color to look for as a numpy(BGR) array
+
+lookForHSVLower = np.array([50, 50, 50])
+lookForHSVUpper = np.array([60, 255, 255])
 
 # TODO: skulle även kunna ha en där jag har att man varierar ett visst antal enheter, vilka
 # distrubieras proportionerligt beroende på hur stor andel som är i B/G/R.
@@ -47,8 +51,47 @@ def detectColor(event,x,y,flags,param):
         lookForColor = [(s / (4 * lookForColorRadius * lookForColorRadius)) for s in summedList]
 
         print "B: ", lookForColor[0], " G: ", lookForColor[1], " R: ", lookForColor[2] # TODO: REMOVE
+        global lookForHSVLower
+        global lookForHSVUpper
+        # h, s, v = colorsys.rgb_to_hsv(lookForColor[1], lookForColor[2], lookForColor[0])
+        # h, s, v = colorsys.rgb_to_hsv(frame[y][x][0], frame[y][x][1], frame[y][x][2])
+        # lookForHSVLower[0] = _add_within_range(h, -5, 180)
+        # lookForHSVLower[1] = _add_within_range(s, -35)
+        # lookForHSVLower[2] = _add_within_range(v, -35)
+        #
+        # lookForHSVUpper[0] = _add_within_range(h, 5, 180)
+        # lookForHSVUpper[1] = _add_within_range(s, 35)
+        # lookForHSVUpper[2] = _add_within_range(v, 35)
+
+
+        # or
+        print lookForColor
+        convertedArray = np.array([[lookForColor]], dtype=np.uint8)
+        print convertedArray
+        hsv = cv2.cvtColor(convertedArray, cv2.COLOR_BGR2HSV)
+        print hsv
+        lookForHSVLower[0] = _add_within_range(hsv[0][0][0], -5, 180)
+        lookForHSVLower[1] = _add_within_range(hsv[0][0][1], -35)
+        lookForHSVLower[2] = _add_within_range(hsv[0][0][2], -35)
+
+        lookForHSVUpper[0] = _add_within_range(hsv[0][0][0], 5, 180)
+        lookForHSVUpper[1] = _add_within_range(hsv[0][0][1], 35)
+        lookForHSVUpper[2] = _add_within_range(hsv[0][0][2], 35)
+
+
         global colorSet
         colorSet = True
+
+# Adds the two values together and if they exceed the maxRange (for positive numbers) or are smaller
+# than 0 (for negative values), then maxRange or 0 is returned instead of the resulting value.
+def _add_within_range(addTo, addValue, maxRange=255):
+    if((addTo + addValue) < 0):
+        return 0
+    elif((addTo + addValue) > maxRange):
+        return maxRange
+    else:
+        return (addTo + addValue)
+
 
 # The waitKey function for 64 bit processors
 def waitCVx64(time):
@@ -83,6 +126,32 @@ def findColor(img):
                 #     img[yCoord][xCoord][1] = img[yCoord][xCoord][1] + 20
                 # if(img[yCoord][xCoord][2] < 230):
                 #     img[yCoord][xCoord][2] = img[yCoord][xCoord][2] + 20
+
+
+# A different version, where we try to find the correct colors by casting from BGR to HSV and
+# then grayscale all pixels that does not match the color we are looking for.
+# Returns the resulting image...
+def findColorHSV(img):
+    print "INSIDE findColorHSV" # TODO: REMOVE
+    # BGR to HSV
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    # thresholds the image to only find the colors to match the ones we are looking for
+    mask = cv2.inRange(hsv, lookForHSVLower, lookForHSVUpper)
+
+    # set saturated value at non mask indexes (False) to 0
+    # hsv[:, :, 1] = hsv[:, :, 1] * mask # NOTE:something wrong... green seems almost right
+    hsv[:, :, 2] = hsv[:, :, 2] * mask
+    # res = img * mask
+    # img[:, :, 0] = img[:, :, 0] * mask
+    # img[:, :, 1] = img[:, :, 1] * mask
+    # img[:, :, 2] = img[:, :, 2] * mask
+
+    hsvColor = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    img[:, :, :] = hsvColor[:, :, :]
+
+    # return img
+    # return mask
 
 
 # Returns true if all value (BGR) for the imgColorArray are within the allowed interval
@@ -158,12 +227,18 @@ if __name__ == '__main__':
     colorSet = False
     while(True):
         # Capture frame-by-frame
-        ret, frame = cap.read()
+        ret, frame = cap.read() # TODO: REAL
+        # frame = cv2.imread("rose.jpg")
 
         # If we are currently the looking for color, then look for the color and
         # edit the frame accordingly
         if(colorSet):
-            findColor(frame) # TODO: MAYBE NOT DO THIS EVERY LOOP? for speed
+            # findColor(frame)
+            findColorHSV(frame)
+
+            # for displaying mask uncomment below and comment out above and modify findColorHSV
+            # tempFrame = findColorHSV(frame)
+            # frame = tempFrame
 
         # Display the resulting frame
         cv2.imshow('frame',frame)
